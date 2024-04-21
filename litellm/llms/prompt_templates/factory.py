@@ -661,6 +661,7 @@ def anthropic_messages_pt_xml(messages: list):
     5. System messages are a separate param to the Messages API (used for tool calling)
     6. Ensure we only accept role, content. (message.name is not supported)
     """
+    # print('anthropic_messages_pt_xml invoke message:',messages)
     # add role=tool support to allow function call result/error submission
     user_message_types = {"user", "tool"}
     # reformat messages to ensure user/assistant are alternating, if there's either 2 consecutive 'user' messages or 2 consecutive 'assistant' message, merge them.
@@ -691,7 +692,7 @@ def anthropic_messages_pt_xml(messages: list):
                         "text": (
                             convert_to_anthropic_tool_result(messages[msg_i])
                             if messages[msg_i]["role"] == "tool"
-                            else messages[msg_i]["content"]
+                            else  ( messages[msg_i]["name"] + ":\n" if messages[msg_i].get("name") else "") + messages[msg_i]["content"] ## river 把name 添加在content前面
                         ),
                     }
                 )
@@ -729,15 +730,30 @@ def anthropic_messages_pt_xml(messages: list):
             raise Exception(
                 "Invalid first message. Should always start with 'role'='user' for Anthropic. System prompt is sent separately for Anthropic. set 'litellm.modify_params = True' or 'litellm_settings:modify_params = True' on proxy, to insert a placeholder user message - '.' as the first message, "
             )
+    print('anthropic_messages_pt_xml invoke new_messages:',new_messages[-1])
 
     if new_messages[-1]["role"] == "assistant":
+        last_content = ''
         for content in new_messages[-1]["content"]:
             if isinstance(content, dict) and content["type"] == "text":
-                content["text"] = content[
+                last_content = content[
                     "text"
                 ].rstrip()  # no trailing whitespace for final assistant message
-
+        for content in new_messages[-2]["content"]:
+            if isinstance(content, dict) and content["type"] == "text":
+                content["text"] = content["text"] + "\n\n" + last_content
+        new_messages = new_messages[:-1]
+    
     return new_messages
+ 
+    # if new_messages[-1]["role"] == "assistant":
+    #     for content in new_messages[-1]["content"]:
+    #         if isinstance(content, dict) and content["type"] == "text":
+    #             content["text"] = content[
+    #                 "text"
+    #             ].rstrip()  # no trailing whitespace for final assistant message
+
+    # return new_messages
 
 
 # ------------------------------------------------------------------------------
@@ -870,7 +886,7 @@ def anthropic_messages_pt(messages: list):
                 user_content.append(convert_to_anthropic_tool_result(messages[msg_i]))
             else:
                 user_content.append(
-                    {"type": "text", "text": messages[msg_i]["content"]}
+                    {"type": "text", "text":  ( messages[msg_i]["name"] + ":\n" if messages[msg_i].get("name") else "") + messages[msg_i]["content"]}
                 )
 
             msg_i += 1
@@ -909,13 +925,26 @@ def anthropic_messages_pt(messages: list):
                 "Invalid first message. Should always start with 'role'='user' for Anthropic. System prompt is sent separately for Anthropic. set 'litellm.modify_params = True' or 'litellm_settings:modify_params = True' on proxy, to insert a placeholder user message - '.' as the first message, "
             )
 
+    # if new_messages[-1]["role"] == "assistant":
+    #     for content in new_messages[-1]["content"]:
+    #         if isinstance(content, dict) and content["type"] == "text":
+    #             content["text"] = content[
+    #                 "text"
+    #             ].rstrip()  # no trailing whitespace for final assistant message
+
+    # return new_messages
+    print('anthropic_messages_pt invoke message:',new_messages[-1])
     if new_messages[-1]["role"] == "assistant":
+        last_content = ''
         for content in new_messages[-1]["content"]:
             if isinstance(content, dict) and content["type"] == "text":
-                content["text"] = content[
+                last_content = content[
                     "text"
                 ].rstrip()  # no trailing whitespace for final assistant message
-
+        for content in new_messages[-2]["content"]:
+            if isinstance(content, dict) and content["type"] == "text":
+                content["text"] = content["text"] + "\n\n" + last_content
+        new_messages = new_messages[:-1]
     return new_messages
 
 
@@ -1287,6 +1316,7 @@ def prompt_factory(
 ):
     original_model_name = model
     model = model.lower()
+    print(f"--------custom_llm_provider---{custom_llm_provider}")
     if custom_llm_provider == "ollama":
         return ollama_pt(model=model, messages=messages)
     elif custom_llm_provider == "anthropic":
